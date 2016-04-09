@@ -23,44 +23,86 @@
 #include <llvm/Bitcode/ReaderWriter.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <llvm/ExecutionEngine/JIT.h>
+#include "llvm/ExecutionEngine/Interpreter.h"
+//#include <llvm/ExecutionEngine/MCJIT.h>
 #include "llvm/ExecutionEngine/GenericValue.h"
+#include <llvm/Support/DynamicLibrary.h>
+
+#include "TestClass.hpp"
 
 using namespace std;
 using namespace llvm;
 
-#include "TestClass.hpp"
+void print (const char *message)
+{
+	cout << message << endl;
+}
+
+GenericValue print_W (FunctionType *FT, ArrayRef<GenericValue> Args)
+{
+	print((const char *)GVTOP(Args[0]));
+	return GenericValue();
+}
+
+void printhi()
+{
+	print("hi");
+}
+
+GenericValue printhi_W (FunctionType *FT, ArrayRef<GenericValue> Args)
+{
+	printhi();
+	return GenericValue();
+}
 
 int main()
 {
-   TestClass tc;
-   tc.setHealth(100);
-   tc.printHealth();
-   
    InitializeNativeTarget();
    LLVMContext context;
    string error;
+	
+   cout << "starting" << endl;
 
    auto mb = MemoryBuffer::getFile("bitcode/damage.bc");
    if (!mb) {
       cout << "ERROR: Failed to getFile" << endl;
       return 0;
    }
+	
+   cout << "got file" << endl;
+	
+   auto mbr = (*mb)->getMemBufferRef();
 
-   auto m = parseBitcodeFile(mb->get(), context);
+   cout << "got mem buffer ref" << endl;
+
+   auto m = parseBitcodeFile(mbr, context);
    if(!m) {
       cout << "ERROR: Failed to load script file." << endl;
       return 0;
    }
-   
-   ExecutionEngine *ee = ExecutionEngine::create(m.get());
+   auto mo = m->release();
+	
+   cout << "got bit code " << mo << endl;
+	
+   auto ee = EngineBuilder(std::unique_ptr<Module>(mo))
+		.setEngineKind(EngineKind::Interpreter)
+		.create();
+
+   sys::DynamicLibrary::AddSymbol("lle_X__Z5printPKc", (void*)&print_W);
+   sys::DynamicLibrary::AddSymbol("lle_X__Z7printhiv", (void*)&printhi_W);
+
+   cout << "built engine " << ee << endl;
 
    // NOTE: Function names are mangled by the compiler.
    Function* init_func = ee->FindFunctionNamed("_Z9initilizev");
    if(!init_func) {
-      cout << "ERROR: Failed to find 'initilize' function." << endl;
+      cout << "ERROR: Failed to find 'initialize' function." << endl;
       return 0;
    }
+	
+   cout << "got function" << init_func << endl;
+
+   ee->runFunction(init_func, ArrayRef<GenericValue>());
 
    Function* attack_func = ee->FindFunctionNamed("_Z6attackP9TestClass");
    if(!attack_func) {
@@ -68,25 +110,11 @@ int main()
       return 0;
    }
 
-   typedef void (*init_pfn)();
-   init_pfn initilize = reinterpret_cast<init_pfn>(ee->getPointerToFunction(init_func));
-   if(!initilize) {
-      cout << "ERROR: Failed to cast 'initilize' function." << endl;
-      return 0;
-   }
+   cout << "got class" << attack_func << endl;
+   TestClass c;
 
-   initilize();
-   cout << "Running attacking script..." << endl;
+   ee->runFunction(attack_func, ArrayRef<GenericValue>(GenericValue(&c)));
 
-   typedef void (*attack_pfn)(TestClass*);
-   attack_pfn attack = reinterpret_cast<attack_pfn>(ee->getPointerToFunction(attack_func));
-   if(!attack) {
-      cout << "ERROR: Failed to cast 'attack' function." << endl;
-      return 0;
-   }
 
-   attack(&tc);
-   
-   tc.printHealth();
    delete ee;
 }

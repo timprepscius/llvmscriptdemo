@@ -11,17 +11,23 @@
  * with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
  */
 
+/*
 
 #include <iostream>
 using namespace std;
 
+*/
+
 #include "../src/TestClass.hpp"
 
+
 void initilize() {
-	cout << "Initilizing attack script..." << endl;
+	printhi();
 }
 
 void attack(TestClass* tc) {
-	cout << "I stab at thee thustly!" << endl;
-	tc->setHealth(tc->getHealth() - 10);
+	print("attack!!!");
+	tc->printHealth();
 }
+
+

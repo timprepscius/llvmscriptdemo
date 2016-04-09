@@ -25,4 +25,7 @@ class TestClass {
 		int health;
 };
 
+void print (const char *);
+void printhi ();
+
 #endif /* TESTCLASS_HPP_ */
